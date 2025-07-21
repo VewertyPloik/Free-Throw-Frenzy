@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Free Throw Frenzy</title>
+<style>
+  body {
+    margin: 0; background: black; color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+  }
+  #home, #game, #shop, #settings {
+    display: none; flex-direction: column; align-items: center;
+    justify-content: center; height: 100vh; text-align: center;
+  }
+  .visible { display: flex !important; }
+  button {
+    font-size: 1.2rem; margin: 10px; padding: 12px 24px;
+    border-radius: 8px; border: none; cursor: pointer;
+    background: #222; color: white;
+  }
+  #gameCanvas {
+    background-size: cover;
+    border: 2px solid white;
+    border-radius: 10px;
+    touch-action: manipulation;
+  }
+  #makeText {
+    position: absolute; top: 50px; font-size: 2rem; color: lime;
+    font-weight: bold; opacity: 0; transition: opacity 0.5s ease;
+    user-select: none;
+  }
+  #scoreCoins {
+    margin-top: 10px;
+    font-size: 1.3rem;
+  }
+  #arrowContainer {
+    position: relative;
+    width: 400px;
+    height: 30px;
+    margin-top: 20px;
+    background: #444;
+    border-radius: 15px;
+    overflow: hidden;
+    user-select: none;
+  }
+  #grayZone {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    background: gray;
+  }
+  #blueZone {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: calc(50% - 90px);
+    width: 180px;
+    background: rgba(0, 0, 255, 0.5);
+    border-radius: 15px;
+  }
+  #redZone {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: calc(50% - 30px);
+    width: 60px;
+    background: rgba(255, 0, 0, 0.8);
+    border-radius: 15px;
+  }
+  #arrow {
+    position: absolute;
+    top: 0; width: 30px; height: 30px;
+    background: lime;
+    border-radius: 5px;
+    transition: left 0.02s linear;
+    user-select: none;
+  }
+  #freeThrowLine {
+    position: absolute;
+    bottom: 130px;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: white;
+    opacity: 0.7;
+  }
+  #courtCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    z-index: -1;
+    width: 400px; height: 600px;
+    border-radius: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div id="home" class="visible">
+  <h1>Free Throw Frenzy</h1>
+  <button id="startBtn">Start Shootaround</button>
+  <button id="shopBtn">Shop</button>
+  <button id="settingsBtn">Settings</button>
+</div>
+
+<div id="game">
+  <canvas id="courtCanvas" width="400" height="600"></canvas>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="freeThrowLine"></div>
+  <div id="makeText">MAKE +5 COINS</div>
+  <div id="scoreCoins">Score: 0 | Coins: 0</div>
+  <div id="arrowContainer">
+    <div id="grayZone"></div>
+    <div id="blueZone"></div>
+    <div id="redZone"></div>
+    <div id="arrow"></div>
+  </div>
+  <button id="exitGameBtn">Home</button>
+</div>
+
+<div id="shop">
+  <h2>Shop</h2>
+  <h3>Balls</h3>
+  <div id="ballShop"></div>
+  <h3>Courts</h3>
+  <div id="courtShop"></div>
+  <div id="coinsShop"></div>
+  <button id="exitShopBtn">Home</button>
+</div>
+
+<div id="settings">
+  <h2>Settings</h2>
+  <button id="toggleSfxBtn">Toggle SFX: ON</button>
+  <button id="resetBtn">Reset Progress</button>
+  <button id="exitSettingsBtn">Home</button>
+</div>
+
+<script>
+(() => {
+  const home = document.getElementById('home');
+  const game = document.getElementById('game');
+  const shop = document.getElementById('shop');
+  const settings = document.getElementById('settings');
+  const startBtn = document.getElementById('startBtn');
+  const shopBtn = document.getElementById('shopBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const exitGameBtn = document.getElementById('exitGameBtn');
+  const exitShopBtn = document.getElementById('exitShopBtn');
+  const exitSettingsBtn = document.getElementById('exitSettingsBtn');
+  const toggleSfxBtn = document.getElementById('toggleSfxBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const ballShopDiv = document.getElementById('ballShop');
+  const courtShopDiv = document.getElementById('courtShop');
+  const coinsShopDiv = document.getElementById('coinsShop');
+  const makeText = document.getElementById('makeText');
+  const scoreCoins = document.getElementById('scoreCoins');
+  const arrow = document.getElementById('arrow');
+  const arrowContainer = document.getElementById('arrowContainer');
+  const gameCanvas = document.getElementById('gameCanvas');
+  const ctx = gameCanvas.getContext('2d');
+  const courtCanvas = document.getElementById('courtCanvas');
+  const ctxCourt = courtCanvas.getContext('2d');
+  const freeThrowLine = document.getElementById('freeThrowLine');
+
+  let coins = parseInt(localStorage.getItem('ftf_coins')) || 0;
+  let score = 0;
+  let arrowSpeed = 4;
+  let arrowDirection = 1;
+  let arrowPos = 0;
+  let sfxOn = localStorage.getItem('ftf_sfx') !== 'off';
+  let makeTextTimeout = null;
+
+  const balls = [
+    {id:'default', name: 'Orange Ball', img:'ball_default.png', multiplier:1, cost:0},
+    {id:'blue', name: 'Blue Ball', img:'ball_blue.png', multiplier:1.5, cost:100},
+    {id:'red', name: 'Red Ball', img:'ball_red.png', multiplier:2, cost:500},
+    {id:'green', name: 'Green Ball', img:'ball_green.png', multiplier:3, cost:2000},
+    {id:'purple', name: 'Purple Ball', img:'ball_purple.png', multiplier:5, cost:10000},
+  ];
+  const courts = [
+    {id:'classic', name:'Classic Court', img:'court_classic.jpg', cost:0},
+    {id:'gym', name:'Gym Court', img:'court_gym.jpg', cost:1000},
+    {id:'nba', name:'NBA Court', img:'court_nba.jpg', cost:10000},
+  ];
+
+  let ownedBalls = JSON.parse(localStorage.getItem('ftf_ownedBalls') || '["default"]');
+  let ownedCourts = JSON.parse(localStorage.getItem('ftf_ownedCourts') || '["classic"]');
+  let selectedBall = localStorage.getItem('ftf_selectedBall') || 'default';
+  let selectedCourt = localStorage.getItem('ftf_selectedCourt') || 'classic';
+
+  // Sounds
+  const swishSound = new Audio('swish.mp3');
+  const clankSound = new Audio('clank.mp3');
+
+  function showScreen(screen) {
+    home.style.display = 'none';
+    game.style.display = 'none';
+    shop.style.display = 'none';
+    settings.style.display = 'none';
+    screen.style.display = 'flex';
+  }
+
+  function saveProgress() {
+    localStorage.setItem('ftf_coins', coins);
+    localStorage.setItem('ftf_ownedBalls', JSON.stringify(ownedBalls));
+    localStorage.setItem('ftf_ownedCourts', JSON.stringify(ownedCourts));
+    localStorage.setItem('ftf_selectedBall', selectedBall);
+    localStorage.setItem('ftf_selectedCourt', selectedCourt);
+    localStorage.setItem('ftf_sfx', sfxOn ? 'on' : 'off');
+  }
+
+  function renderShop() {
+    ballShopDiv.innerHTML = '';
+    balls.forEach(ball => {
+      const owned = ownedBalls.includes(ball.id);
+      const selected = selectedBall === ball.id;
+      const btnText = owned ? (selected ? 'Selected' : 'Use') : `Buy (${ball.cost})`;
+      const btn = document.createElement('button');
+      btn.textContent = `${ball.name} ${btnText}`;
+      btn.style.backgroundColor = ball.id === 'default' ? 'orange' :
+                              ball.id === 'blue' ? '#3a6fff' :
+                              ball.id === 'red' ? '#ff3a3a' :
+                              ball.id === 'green' ? '#3aff6a' :
+                              ball.id === 'purple' ? '#b63aff' : '#555';
+      btn.disabled = !owned && coins < ball.cost;
+      btn.onclick = () => {
+        if (owned) {
+          selectedBall = ball.id;
+          saveProgress();
+          renderShop();
+        } else if (coins >= ball.cost) {
+          coins -= ball.cost;
+          ownedBalls.push(ball.id);
+          selectedBall = ball.id;
+          saveProgress();
+          renderShop();
+          updateScoreCoins();
+        }
+      };
+      ballShopDiv.appendChild(btn);
+    });
+
+    courtShopDiv.innerHTML = '';
+    courts.forEach(court => {
+      const owned = ownedCourts.includes(court.id);
+      const selected = selectedCourt === court.id;
+      const btnText = owned ? (selected ? 'Selected' : 'Use') : `Buy (${court.cost})`;
+      const btn = document.createElement('button');
+      btn.textContent = `${court.name} ${btnText}`;
+      btn.style.backgroundColor = '#444';
+      btn.disabled = !owned && coins < court.cost;
+      btn.onclick = () => {
+        if (owned) {
+          selectedCourt = court.id;
+          saveProgress();
+          renderShop();
+          drawCourt();
+        } else if (coins >= court.cost) {
+          coins -= court.cost;
+          ownedCourts.push(court.id);
+          selectedCourt = court.id;
+          saveProgress();
+          renderShop();
+          drawCourt();
+          updateScoreCoins();
+        }
+      };
+      courtShopDiv.appendChild(btn);
+    });
+
+    coinsShopDiv.textContent = `Coins: ${coins}`;
+  }
+
+  function drawCourt() {
+    const court = courts.find(c => c.id === selectedCourt);
+    const img = new Image();
+    img.src = court.img;
+    img.onload = () => {
+      ctxCourt.clearRect(0, 0, courtCanvas.width, courtCanvas.height);
+      ctxCourt.drawImage(img, 0, 0, courtCanvas.width, courtCanvas.height);
+    };
+  }
+
+  function drawBall(x, y) {
+    const ball = balls.find(b => b.id === selectedBall);
+    const img = new Image();
+    img.src = ball.img;
+    img.onload = () => {
+      ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+      ctx.drawImage(img, x - 25, y - 25, 50, 50);
+    };
+  }
+
+  // Arrow animation variables
+  let arrowMoving = true;
+
+  function animateArrow() {
+    if (!arrowMoving) return;
+    arrowPos += arrowDirection * arrowSpeed;
+    if (arrowPos < 0) {
+      arrowPos = 0;
+      arrowDirection = 1;
+    } else if (arrowPos + 30 > 400) {
+      arrowPos = 370;
+      arrowDirection = -1;
+    }
+    arrow.style.left = arrowPos + 'px';
+    requestAnimationFrame(animateArrow);
+  }
+
+  // Shooting animation
+  let shooting = false;
+  let ballX = 200;
+  let ballY = 530;
+  let shootProgress = 0;
+  const shootDuration = 60; // frames
+
+  function shoot(success) {
+    if (shooting) return;
+    shooting = true;
+    shootProgress = 0;
+
+    function step() {
+      shootProgress++;
+      // Ball moves up and arcs toward hoop (x=200,y=150)
+      const t = shootProgress / shootDuration;
+      const height = -300 * Math.sin(Math.PI * t); // arc shape
+      ballX = 200 + (0) * t; // no horizontal move, can be extended
+      ballY = 530 + height;
+
+      drawBall(ballX, ballY);
+
+      if (shootProgress < shootDuration) {
+        requestAnimationFrame(step);
+      } else {
+        shooting = false;
+        ballX = 200;
+        ballY = 530;
+        drawBall(ballX, ballY);
+        if (success) {
+          coins += Math.floor(5 * balls.find(b => b.id === selectedBall).multiplier);
+          score++;
+          showMakeText();
+          playSound('swish');
+        } else {
+          playSound('clank');
+          animateMissBounce();
+        }
+        updateScoreCoins();
+      }
+    }
+    step();
+  }
+
+  // Simple miss bounce (move ball down and back to free throw line)
+  let missBouncing = false;
+  let missBounceFrame = 0;
+  function animateMissBounce() {
+    missBouncing = true;
+    missBounceFrame = 0;
+
+    function step() {
+      missBounceFrame++;
+      let y;
+      if (missBounceFrame <= 15) {
+        y = 530 + 10 * Math.sin((missBounceFrame / 15) * Math.PI);
+      } else {
+        y = 530;
+      }
+      drawBall(200, y);
+      if (missBounceFrame < 30) {
+        requestAnimationFrame(step);
+      } else {
+        missBouncing = false;
+      }
+    }
+    step();
+  }
+
+  function showMakeText() {
+    makeText.style.opacity = '1';
+    setTimeout(() => { makeText.style.opacity = '0'; }, 1500);
+  }
+
+  function updateScoreCoins() {
+    scoreCoins.textContent = `Score: ${score} | Coins: ${coins}`;
+  }
+
+  // Shot check logic
+  function checkShot() {
+    if (shooting || missBouncing) return;
+
+    const arrowCenter = arrowPos + 15;
+    const redLeft = 185;
+    const redRight = 245;
+    const blueLeft = 140;
+    const blueRight = 300;
+
+    if (arrowCenter >= redLeft && arrowCenter <= redRight) {
+      // 80% chance make
+      if (Math.random() < 0.8) shoot(true);
+      else shoot(false);
+    } else if (arrowCenter >= blueLeft && arrowCenter <= blueRight) {
+      // 50% chance make
+      if (Math.random() < 0.5) shoot(true);
+      else shoot(false);
+    } else {
+      // Miss
+      shoot(false);
+    }
+  }
+
+  function playSound(name) {
+    if (!sfxOn) return;
+    if (name === 'swish') swishSound.play();
+    else if (name === 'clank') clankSound.play();
+  }
+
+  // Event listeners
+  startBtn.onclick = () => {
+    score = 0;
+    arrowSpeed = 4;
+    arrowPos = 0;
+    arrowDirection = 1;
+    updateScoreCoins();
+    showScreen(game);
+    drawCourt();
+    drawBall(ballX, ballY);
+    animateArrow();
+  };
+  shopBtn.onclick = () => {
+    renderShop();
+    showScreen(shop);
+  };
+  settingsBtn.onclick = () => showScreen(settings);
+  exitGameBtn.onclick = () => goHome();
+  exitShopBtn.onclick = () => goHome();
+  exitSettingsBtn.onclick = () => goHome();
+  toggleSfxBtn.onclick = () => {
+    sfxOn = !sfxOn;
+    toggleSfxBtn.textContent = 'Toggle SFX: ' + (sfxOn ? 'ON' : 'OFF');
+    localStorage.setItem('ftf_sfx', sfxOn ? 'on' : 'off 
+
+    localStorage.setItem('ftf_sfx', sfxOn ? 'on' : 'off');
+  };
+
+  resetBtn.onclick = () => {
+    if (confirm('Reset all progress?')) {
+      coins = 0;
+      score = 0;
+      ownedBalls = ['default'];
+      ownedCourts = ['classic'];
+      selectedBall = 'default';
+      selectedCourt = 'classic';
+      sfxOn = true;
+      saveProgress();
+      updateScoreCoins();
+      renderShop();
+      toggleSfxBtn.textContent = 'Toggle SFX: ON';
+      showScreen(home);
+    }
+  };
+
+  function goHome() {
+    showScreen(home);
+  }
+
+  // Tap/click to shoot
+  gameCanvas.addEventListener('click', () => {
+    checkShot();
+  });
+  gameCanvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    checkShot();
+  }, { passive: false });
+
+  // Initialize UI
+  toggleSfxBtn.textContent = 'Toggle SFX: ' + (sfxOn ? 'ON' : 'OFF');
+  updateScoreCoins();
+  showScreen(home);
+})();
+</script>
+
+</body>
+</html>
+

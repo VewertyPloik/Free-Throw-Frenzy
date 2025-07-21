@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Free Throw Frenzy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: #fff;
+      overflow: hidden;
+    }
+    #gameScreen, #homeScreen, #shopScreen, #resultScreen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+    }
+    .visible { display: flex !important; }
+    button {
+      background: #333;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 18px;
+      border-radius: 8px;
+      margin: 10px;
+    }
+    #shopContainer {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .shopSection {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .shopItem {
+      background: #222;
+      border: 2px solid #555;
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .shopItem.selected {
+      border-color: gold;
+    }
+    .shopBall {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin: auto;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="homeScreen" class="visible">
+  <h1>Free Throw Frenzy</h1>
+  <button id="startBtn">Start Game</button>
+  <button id="shopBtn">Shop</button>
+</div>
+
+<div id="gameScreen">
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="makeText" style="position:absolute; top:40px; font-size:24px; font-weight:bold; color:lime; opacity:0;">Make! +5</div>
+  <div id="scoreDisplay">Score: 0</div>
+  <div id="coinDisplay">Coins: 0</div>
+  <button id="exitGameBtn">Exit</button>
+</div>
+
+<div id="resultScreen">
+  <h2 id="resultText">You Win!</h2>
+  <button id="playAgainBtn">Play Again</button>
+  <button id="exitResultBtn">Home</button>
+</div>
+
+<div id="shopScreen">
+  <h2>Shop</h2>
+  <div id="coinDisplayShop">Coins: 0</div>
+  <div id="shopContainer">
+    <div>
+      <h3>Balls</h3>
+      <div id="shopBalls" class="shopSection"></div>
+    </div>
+    <div>
+      <h3>Courts</h3>
+      <div id="shopCourts" class="shopSection"></div>
+    </div>
+  </div>
+  <button id="exitShopBtn">Exit</button>
+</div>
+
+<script>
+(() => {
+  const gameScreen = document.getElementById('gameScreen');
+  const homeScreen = document.getElementById('homeScreen');
+  const shopScreen = document.getElementById('shopScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const shopBallsDiv = document.getElementById('shopBalls');
+  const shopCourtsDiv = document.getElementById('shopCourts');
+  const coinDisplay = document.getElementById('coinDisplay');
+  const coinDisplayShop = document.getElementById('coinDisplayShop');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const makeText = document.getElementById('makeText');
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let coins = 0;
+  let score = 0;
+  let selectedBallId = 'default';
+  let selectedCourtId = 'classic';
+  let arrowSpeed = 4;
+  let arrowDirection = 1;
+  let arrowPos = 0;
+  const arrowWidth = 30;
+  const containerWidth = 400;
+  const targetZoneWidth = 60;
+  let makeTextTimer = null;
+  let ball = { shooting: false, currentX: 200, currentY: 500 };
+
+  const ballSkins = [
+    { id: 'default', name: 'Orange Ball', color1: 'orange', color2: 'darkorange', cost: 0, owned: true, multiplier: 1 },
+    { id: 'blue', name: 'Blue Ball', color1: '#00f', color2: '#008', cost: 200, owned: false, multiplier: 1.5 },
+    { id: 'red', name: 'Red Ball', color1: '#f00', color2: '#800', cost: 400, owned: false, multiplier: 2 },
+    { id: 'green', name: 'Green Ball', color1: '#0f0', color2: '#080', cost: 600, owned: false, multiplier: 3 },
+    { id: 'purple', name: 'Purple Ball', color1: '#c0f', color2: '#609', cost: 1000, owned: false, multiplier: 5 },
+  ];
+
+  const courts = [
+    { id: 'classic', name: 'Classic Court', bgColor1: '#0a0', bgColor2: '#050', cost: 0, owned: true },
+    { id: 'desert', name: 'Desert Court', bgColor1: '#e8c17d', bgColor2: '#c59a55', cost: 1000, owned: false },
+    { id: 'night', name: 'Night Court', bgColor1: '#222', bgColor2: '#000', cost: 1000, owned: false },
+  ];
+
+  function showScreen(screen) {
+    gameScreen.classList.remove('visible');
+    homeScreen.classList.remove('visible');
+    shopScreen.classList.remove('visible');
+    resultScreen.classList.remove('visible');
+    if (screen === 'game') gameScreen.classList.add('visible');
+    else if (screen === 'home') homeScreen.classList.add('visible');
+    else if (screen === 'shop') shopScreen.classList.add('visible');
+    else if (screen === 'result') resultScreen.classList.add('visible');
+  }
+
+  function updateCoinsDisplay() {
+    coinDisplay.textContent = `Coins: ${Math.floor(coins)}`;
+    coinDisplayShop.textContent = `Coins: ${Math.floor(coins)}`;
+  }
+
+  function updateScore() {
+    scoreDisplay.textContent = `Score: ${score}`;
+  }
+
+  function saveProgress() {
+    localStorage.setItem('coins', coins);
+    localStorage.setItem('ballSkins', JSON.stringify(ballSkins));
+    localStorage.setItem('selectedBallId', selectedBallId);
+    localStorage.setItem('courts', JSON.stringify(courts));
+    localStorage.setItem('selectedCourtId', selectedCourtId);
+  }
+
+  function loadProgress() {
+    coins = parseFloat(localStorage.getItem('coins')) || 0;
+    selectedBallId = localStorage.getItem('selectedBallId') || 'default';
+    selectedCourtId = localStorage.getItem('selectedCourtId') || 'classic';
+    const savedBalls = JSON.parse(localStorage.getItem('ballSkins'));
+    const savedCourts = JSON.parse(localStorage.getItem('courts'));
+    if (savedBalls) {
+      savedBalls.forEach(saved => {
+        const ball = ballSkins.find(b => b.id === saved.id);
+        if (ball) Object.assign(ball, saved);
+      });
+    }
+    if (savedCourts) {
+      savedCourts.forEach(saved => {
+        const court = courts.find(c => c.id === saved.id);
+        if (court) Object.assign(court, saved);
+      });
+    }
+  }
+
+  function getCoinMultiplier() {
+    const ball = ballSkins.find(b => b.id === selectedBallId);
+    return ball?.multiplier || 1;
+  }
+
+  function animateShot(success) {
+    if (success) {
+      score++;
+      const bonus = 5 * getCoinMultiplier();
+      coins += bonus;
+      arrowSpeed *= 1.05;
+      updateCoinsDisplay();
+      updateScore();
+      saveProgress();
+      showMakeText(`Make! +${Math.floor(bonus)}`);
+    }
+  }
+
+  function showMakeText(text = 'Make! +5') {
+    if (makeTextTimer) clearTimeout(makeTextTimer);
+    makeText.textContent = text;
+    makeText.style.opacity = '1';
+    makeText.style.top = '40px';
+    let pos = 40;
+    const animStep = () => {
+      pos -= 0.7;
+      makeText.style.top = pos + 'px';
+      makeText.style.opacity = (pos - 20) / 20;
+      if (pos > 20) requestAnimationFrame(animStep);
+    };
+    animStep();
+    makeTextTimer = setTimeout(() => {
+      makeText.style.opacity = '0';
+      makeText.style.top = '40px';
+    }, 1500);
+  }
+
+  function onPlayerShoot() {
+    const center = arrowPos + arrowWidth / 2;
+    const targetLeft = (containerWidth / 2) - (targetZoneWidth / 2);
+    const targetRight = targetLeft + targetZoneWidth;
+    animateShot(center >= targetLeft && center <= targetRight);
+  }
+
+  function animateArrow() {
+    arrowPos += arrowDirection * arrowSpeed;
+    if (arrowPos + arrowWidth >= containerWidth) {
+      arrowPos = containerWidth - arrowWidth;
+      arrowDirection = -1;
+    } else if (arrowPos <= 0) {
+      arrowPos = 0;
+      arrowDirection = 1;
+    }
+    requestAnimationFrame(animateArrow);
+  }
+
+  function renderBallsShop() {
+    shopBallsDiv.innerHTML = '';
+    ballSkins.forEach(skin => {
+      const div = document.createElement('div');
+      div.classList.add('shopItem');
+      if (skin.id === selectedBallId) div.classList.add('selected');
+      div.innerHTML = `
+        <div class="shopBall" style="background: radial-gradient(circle at 30% 30%, ${skin.color1}, ${skin.color2}); border: 3px solid ${skin.owned ? '#00cc44' : '#555'}"></div>
+        <div style="font-weight: bold;">${skin.name}</div>
+        <div>${skin.owned ? 'Owned' : `Cost: ${skin.cost}`}</div>
+      `;
+      div.addEventListener('click', () => {
+        if (skin.owned) {
+          selectedBallId = skin.id;
+        } else if (coins >= skin.cost) {
+          coins -= skin.cost;
+          skin.owned = true;
+          selectedBallId = skin.id;
+        } else {
+          alert('Not enough coins!');
+        }
+        updateCoinsDisplay();
+        saveProgress();
+        renderShop();
+      });
+      shopBallsDiv.appendChild(div);
+    });
+  }
+
+  function renderCourtsShop() {
+    shopCourtsDiv.innerHTML = '';
+    courts.forEach(court => {
+      const div = document.createElement('div');
+      div.classList.add('shopItem');
+      if (court.id === selectedCourtId) div.classList.add('selected');
+      div.innerHTML = `
+        <div style="height: 50px; background: linear-gradient(135deg, ${court.bgColor1}, ${court.bgColor2}); border-radius: 8px; margin-bottom: 10px;"></div>
+        <div style="font-weight: bold;">${court.name}</div>
+        <div>${court.owned ? 'Owned' : `Cost: ${court.cost}`}</div>
+      `;
+      div.addEventListener('click', () => {
+        if (court.owned) {
+          selectedCourtId = court.id;
+        } else if (coins >= court.cost) {
+          coins -= court.cost;
+          court.owned = true;
+          selectedCourtId = court.id;
+        } else {
+          alert('Not enough coins!');
+        }
+        updateCoinsDisplay();
+        saveProgress();
+        renderShop();
+      });
+      shopCourtsDiv.appendChild(div);
+    });
+  }
+
+  function renderShop() {
+    renderBallsShop();
+    renderCourtsShop();
+    updateCoinsDisplay();
+  }
+
+  function resetGame() {
+    score = 0;
+    arrowSpeed = 4;
+    updateScore();
+    showScreen('game');
+    animateArrow();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') onPlayerShoot();
+  });
+  gameScreen.addEventListener('touchstart', onPlayerShoot);
+  document.getElementById('startBtn').addEventListener('click', resetGame);
+  document.getElementById('shopBtn').addEventListener('click', () => {
+    renderShop();
+    showScreen('shop');
+  });
+  document.getElementById('playAgainBtn').addEventListener('click', resetGame);
+  document.getElementById('exitResultBtn').addEventListener('click', () => showScreen('home'));
+  document.getElementById('exitGameBtn').addEventListener('click', () => showScreen('home'));
+  document.getElementById('exitShopBtn').addEventListener('click', () => showScreen('home'));
+
+  loadProgress();
+  updateCoinsDisplay();
+  updateScore();
+  showScreen('home');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Free Throw Frenzy</title>
+<style>
+  body {
+    margin: 0;
+    background: #222;
+    color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none;
+  }
+  #homeScreen, #gameScreen, #resultScreen, #shopScreen {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  #homeScreen {
+    background: linear-gradient(135deg, #0d0d0d, #004d00);
+  }
+  button {
+    background-color: #00cc44;
+    border: none;
+    color: white;
+    font-size: 24px;
+    padding: 15px 30px;
+    margin: 10px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background-color: #00a833;
+  }
+  canvas {
+    background: #444;
+    border: 3px solid #222;
+    border-radius: 12px;
+    margin-top: 20px;
+    display: block;
+  }
+  #scoreBoard {
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+  #turnText {
+    font-size: 20px;
+    margin: 10px 0;
+  }
+  #timerBarContainer {
+    width: 300px;
+    height: 25px;
+    background: #222;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    margin-top: 20px;
+    box-shadow: inset 0 0 5px #000;
+  }
+  #targetZone {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 100%;
+    background: #cc2222;
+    border-radius: 12px;
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 1;
+  }
+  #arrow {
+    position: absolute;
+    top: 0;
+    width: 25px;
+    height: 25px;
+    background: transparent;
+    pointer-events: none;
+    z-index: 2;
+  }
+  #arrow svg {
+    width: 25px;
+    height: 25px;
+    fill: limegreen;
+  }
+  #shopItems {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 480px;
+  }
+  .shopItem {
+    background: #333;
+    border-radius: 8px;
+    margin: 10px;
+    padding: 15px;
+    width: 120px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .shopBall {
+    margin: 10px auto;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid #555;
+    position: relative;
+  }
+  .selected {
+    border-color: #00cc44 !important;
+    box-shadow: 0 0 10px #00cc44;
+  }
+  #coinsDisplay {
+    font-size: 20px;
+    margin-bottom: 15px;
+  }
+</style>
+</head>
+<body>
+
+<div id="homeScreen">
+  <h1 style="font-size: 64px; margin-bottom: 0;">Free Throw Frenzy</h1>
+  <p style="font-size: 24px; margin-top: 5px;">Basketball Shooting Game</p>
+  <button id="startBtn">Play Game</button>
+  <button id="shopBtn">Shop</button>
+  <div id="coinsDisplay">Coins: 0</div>
+</div>
+
+<div id="gameScreen" style="display:none; flex-direction: column; align-items: center; position: relative;">
+  <div id="scoreBoard">Score: 0</div>
+  <div id="coinsDisplayGame">Coins: 0</div>
+  <div id="turnText">Tap or press SPACE to shoot</div>
+  <canvas id="gameCanvas" width="400" height="300"></canvas>
+  <div id="timerBarContainer">
+    <div id="targetZone"></div>
+    <div id="arrow">
+      <svg viewBox="0 0 24 24" >
+        <path d="M12 2 L15 8 H9 L12 2 Z M11 8 V22 H13 V8 H11 Z" />
+      </svg>
+    </div>
+  </div>
+  <button id="exitGameBtn" style="margin-top:20px; background:#cc3300;">Exit to Home</button>
+  <div id="makeText" style="
+    position: absolute;
+    color: #0f0;
+    font-weight: bold;
+    font-size: 22px;
+    left: 320px;
+    top: 40px;
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    text-shadow: 0 0 6px #0f0;
+    transition: none;
+  ">Make +5 coins</div>
+</div>
+
+<div id="resultScreen" style="display:none;">
+  <h2 id="resultText"></h2>
+  <button id="playAgainBtn">Play Again</button>
+  <button id="exitResultBtn" style="background:#cc3300; margin-top:10px;">Exit to Home</button>
+</div>
+
+<div id="shopScreen" style="display:none; background:#111; color:#eee; padding:20px;">
+  <h2>Shop - Buy Basketballs</h2>
+  <div id="coinsDisplayShop" style="font-size:20px; margin-bottom:10px;">Coins: 0</div>
+  <div id="shopItems"></div>
+  <button id="exitShopBtn" style="background:#cc3300; margin-top:20px;">Exit to Home</button>
+</div>
+
+<script>
+(() => {
+  // DOM refs
+  const homeScreen = document.getElementById('homeScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const shopScreen = document.getElementById('shopScreen');
+  const startBtn = document.getElementById('startBtn');
+  const shopBtn = document.getElementById('shopBtn');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const exitGameBtn = document.getElementById('exitGameBtn');
+  const exitResultBtn = document.getElementById('exitResultBtn');
+  const exitShopBtn = document.getElementById('exitShopBtn');
+  const scoreBoard = document.getElementById('scoreBoard');
+  const turnText = document.getElementById('turnText');
+  const timerBarContainer = document.getElementById('timerBarContainer');
+  const arrow = document.getElementById('arrow');
+  const targetZone = document.getElementById('targetZone');
+  const makeText = document.getElementById('makeText');
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const coinsDisplayHome = document.getElementById('coinsDisplay');
+  const coinsDisplayGame = document.getElementById('coinsDisplayGame');
+  const coinsDisplayShop = document.getElementById('coinsDisplayShop');
+  const shopItemsDiv = document.getElementById('shopItems');
+
+  // Game vars
+  let score = 0;
+  let coins = 0;
+  const winningScore = 11;
+
+  let timerRunning = false;
+  const containerWidth = 300;
+  let arrowPos = 0;
+  let arrowDirection = 1;
+  const arrowSpeed = 4;
+  const arrowWidth = 25;
+  const targetZoneWidth = 60;
+
+  // Ball info & skins
+  const ballSkins = [
+    { id: 0, name: "Classic Orange", cost: 0, color1: "#FFA500", color2: "#cc6600", owned: true },
+    { id: 1, name: "Cool Blue", cost: 50, color1: "#0077ff", color2: "#0044bb", owned: false },
+    { id: 2, name: "Fire Red", cost: 100, color1: "#ff3300", color2: "#aa2200", owned: false },
+    { id: 3, name: "Neon Green", cost: 150, color1: "#33ff33", color2: "#119911", owned: false },
+    { id: 4, name: "Purple Glow", cost: 200, color1: "#cc33ff", color2: "#8811cc", owned: false }
+  ];
+  let selectedBallId = 0;
+
+  // Ball shooting animation
+  const ballStart = { x: 50, y: 250 };
+  const ballTarget = { x: 330, y: 90 };
+  let ball = {
+    x: ballStart.x,
+    y: ballStart.y,
+    radius: 12,
+    shooting: false,
+    shootTime: 0,
+    shootDuration: 60,
+    currentX: ballStart.x,
+    currentY: ballStart.y,
+  };
+
+  // Floating make text animation control
+  let makeTextTimer = null;
+
+  function saveProgress() {
+    const saveData = {
+      coins,
+      ownedSkins: ballSkins.map(s => s.owned),
+      selectedBallId,
+    };
+    localStorage.setItem('ftf_save', JSON.stringify(saveData));
+  }
+
+  function loadProgress() {
+    const saveData = JSON.parse(localStorage.getItem('ftf_save'));
+    if (saveData) {
+      coins = saveData.coins || 0;
+      for (let i = 0; i < ballSkins.length; i++) {
+        ballSkins[i].owned = saveData.ownedSkins && saveData.ownedSkins[i] === true || i === 0;
+      }
+      selectedBallId = saveData.selectedBallId || 0;
+    }
+  }
+
+  function updateCoinsDisplay() {
+    coinsDisplayHome.textContent = `Coins: ${coins}`;
+    coinsDisplayGame.textContent = `Coins: ${coins}`;
+    coinsDisplayShop.textContent = `Coins: ${coins}`;
+  }
+
+  function updateScore() {
+    scoreBoard.textContent = `Score: ${score}`;
+  }
+
+  function showScreen(screen) {
+    homeScreen.style.display = 'none';
+    gameScreen.style.display = 'none';
+    resultScreen.style.display = 'none';
+    shopScreen.style.display = 'none';
+
+    if (screen === 'home') homeScreen.style.display = 'flex';
+    if (screen === 'game') gameScreen.style.display = 'flex';
+    if (screen === 'result') resultScreen.style.display = 'flex';
+    if (screen === 'shop') shopScreen.style.display = 'flex';
+  }
+
+  function startTimer() {
+    timerRunning = true;
+    arrowPos = 0;
+    arrowDirection = 1;
+    animateArrow();
+  }
+
+  function stopTimer() {
+    timerRunning = false;
+    arrow.style.left = '0px';
+  }
+
+  function drawStaticScene() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Court floor (perspective trapezoid)
+    ctx.fillStyle = '#6B8E23';
+    ctx.beginPath();
+    ctx.moveTo(20, 280);
+    ctx.lineTo(380, 280);
+    ctx.lineTo(320, 150);
+    ctx.lineTo(80, 150);
+    ctx.closePath();
+    ctx.fill();
+
+    // Hoop pole
+    ctx.fillStyle = '#555';
+    ctx.fillRect(330, 100, 8, 80);
+
+    // Backboard
+    ctx.fillStyle = '#EEE';
+    ctx.beginPath();
+    ctx.moveTo(315, 60);
+    ctx.lineTo(345, 60);
+    ctx.lineTo(345, 100);
+    ctx.lineTo(315, 100);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Rim (circle)
+    ctx.strokeStyle = '#b22222';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(330, 90, 25, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Net lines
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    for (let i = -15; i <= 15; i += 5) {
+      ctx.beginPath();
+      ctx.moveTo(330 + i, 90);
+      ctx.lineTo(330 + i / 2, 110);
+      ctx.stroke();
+    }
+
+    drawBall(ball.currentX, ball.currentY);
+
+    // Ball shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(ball.currentX, 280, ball.radius + 5, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawBall(x, y) {
+    const skin = ballSkins.find(b => b.id === selectedBallId) || ballSkins[0];
+    const gradient = ctx.createRadialGradient(x - 5, y - 5, 3, x, y, ball.radius);
+    gradient.addColorStop(0, skin.color1);
+    gradient.addColorStop(1, skin.color2);
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#663300';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - ball.radius * 0.7, y - ball.radius);
+    ctx.quadraticCurveTo(x, y, x - ball.radius * 0.7, y + ball.radius);
+    ctx.moveTo(x - ball.radius, y);
+    ctx.quadraticCurveTo(x, y + ball.radius * 0.7, x + ball.radius, y);
+    ctx.stroke();
+  }
+
+  function animateShot(success) {
+    if (!ball.shooting) {
+      ball.shooting = true;
+      ball.shootTime = 0;
+      ball.currentX = ballStart.x;
+      ball.currentY = ballStart.y;
+    }
+
+    function step() {
+      ball.shootTime++;
+      let t = ball.shootTime / ball.shootDuration;
+      if (t > 1) t = 1;
+      const cx = (ballStart.x + ballTarget.x) / 2;
+      const cy = ballStart.y - 120;
+
+      ball.currentX = (1 - t) * (1 - t) * ballStart.x + 2 * (1 - t) * t * cx + t * t * ballTarget.x;
+      ball.currentY = (1 - t) * (1 - t) * ballStart.y + 2 * (1 - t) * t * cy + t * t * ballTarget.y;
+
+      drawStaticScene();
+
+      if (ball.shootTime < ball.shootDuration) {
+        requestAnimationFrame(step);
+      } else {
+        ball.shooting = false;
+        ball.currentX = ballStart.x;
+        ball.currentY = ballStart.y;
+
+        if (success) {
+          score++;
+          coins += 5;
+          updateScore();
+          updateCoinsDisplay();
+          saveProgress();
+          showMakeText();
+        }
+        checkWin();
+
+        if (!timerRunning) startTimer();
+      }
+    }
+    step();
+  }
+
+  function showMakeText() {
+    if (makeTextTimer) {
+      clearTimeout(makeTextTimer);
+    }
+    makeText.style.opacity = '1';
+    makeText.style.top = '40px';
+    let pos = 40;
+    const animStep = () => {
+      pos -= 0.7;
+      makeText.style.top = pos + 'px';
+      makeText.style.opacity = (pos - 20) / 20; // fade out
+      if (pos > 20) {
+        requestAnimationFrame(animStep);
+      }
+    };
+    animStep();
+
+    makeTextTimer = setTimeout(() => {
+      makeText.style.opacity = '0';
+      makeText.style.top = '40px';
+    }, 1500);
+  }
+
+  function checkWin() {
+    if (score >= winningScore) {
+      showResult(`You Win! Score: ${score} | Coins: ${coins}`);
+    }
+  }
+
+  function showResult(text) {
+    stopTimer();
+    showScreen('result');
+    document.getElementById('resultText').textContent = text;
+  }
+
+  function onPlayerShoot() {
+    if (ball.shooting || !timerRunning) return;
+
+    const arrowCenter = arrowPos + arrowWidth / 2;
+    const targetLeft = (containerWidth / 2) - (targetZoneWidth / 2);
+    const targetRight = targetLeft + targetZoneWidth;
+
+    if (arrowCenter >= targetLeft && arrowCenter <= targetRight) {
+      stopTimer();
+      animateShot(true);
+    } else {
+      stopTimer();
+      animateShot(false);
+    }
+  }
+
+  function animateArrow() {
+    if (!timerRunning) {
+      arrow.style.left = '0px';
+      return;
+    }
+    arrowPos += arrowDirection * arrowSpeed;
+    if (arrowPos + arrowWidth >= containerWidth) {
+      arrowPos = containerWidth - arrowWidth;
+      arrowDirection = -1;
+    } else if (arrowPos <= 0) {
+      arrowPos = 0;
+      arrowDirection = 1;
+    }
+    arrow.style.left = arrowPos + 'px';
+    requestAnimationFrame(animateArrow);
+  }
+
+  function resetGame() {
+    score = 0;
+    updateScore();
+    startTimer();
+    showScreen('game');
+  }
+
+  // Shop code
+  function renderShop() {
+    shopItemsDiv.innerHTML = '';
+    ballSkins.forEach(skin => {
+      const div = document.createElement('div');
+      div.classList.add('shopItem');
+      if (skin.id === selectedBallId) div.classList.add('selected');
+      div.innerHTML = `
+        <div class="shopBall" style="background: radial-gradient(circle at 30% 30%, ${skin.color1}, ${skin.color2}); border-color: ${skin.owned ? '#00cc44' : '#555'}"></div>
+        <div style="font-weight: bold;">${skin.name}</div>
+        <div>${skin.owned ? 'Owned' : `Cost: ${skin.cost} coins`}</div>
+      `;
+      div.addEventListener('click', () => {
+        if (skin.owned) {
+          selectedBallId = skin.id;
+          saveProgress();
+          renderShop();
+        } else if (coins >= skin.cost) {
+          coins -= skin.cost;
+          skin.owned = true;
+          selectedBallId = skin.id;
+          updateCoinsDisplay();
+          saveProgress();
+          renderShop();
+        } else {
+          alert('Not enough coins!');
+        }
+      });
+      shopItemsDiv.appendChild(div);
+    });
+  }
+
+  // Event listeners
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (gameScreen.style.display === 'flex') {
+        onPlayerShoot();
+      }
+    }
+  });
+
+  gameScreen.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (gameScreen.style.display === 'flex') {
+      onPlayerShoot();
+    }
+  });
+
+  startBtn.addEventListener('click', () => {
+    resetGame();
+  });
+
+  shopBtn.addEventListener('click', () => {
+    renderShop();
+    showScreen('shop');
+  });
+
+  playAgainBtn.addEventListener('click', () => {
+    resetGame();
+  });
+
+  exitGameBtn.addEventListener('click', () => {
+    showScreen('home');
+  });
+
+  exitResultBtn.addEventListener('click', () => {
+    showScreen('home');
+  });
+
+  exitShopBtn.addEventListener('click', () => {
+    showScreen('home');
+  });
+
+  // Load progress and initialize
+  loadProgress();
+  updateCoinsDisplay();
+  updateScore();
+  showScreen('home');
+})();
+</script>
+
+</body>
+</html>
